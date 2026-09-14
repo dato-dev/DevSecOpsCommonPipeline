@@ -39,7 +39,11 @@ RUN python -m venv "$VIRTUAL_ENV" && pip install --no-cache-dir \
 
 # Бинарные инструменты. Имена файлов в релизах у всех троих разные, поэтому
 # TARGETARCH раскладывается для каждого отдельно.
+# --retry: загрузки с CDN GitHub периодически отвечают 504, и сборка образа
+# падает без всякого отношения к содержимому. Один такой 504 уже уронил сборку
+# main ровно в том же коммите, где та же сборка по тегу прошла.
 RUN set -eu; \
+	curl() { command curl --retry 5 --retry-all-errors --retry-delay 3 "$@"; }; \
 	case "$TARGETARCH" in \
 		amd64) TRIVY_A=Linux-64bit; GL_A=linux_x64;   HL_A=Linux-x86_64 ;; \
 		arm64) TRIVY_A=Linux-ARM64; GL_A=linux_arm64; HL_A=Linux-arm64  ;; \
