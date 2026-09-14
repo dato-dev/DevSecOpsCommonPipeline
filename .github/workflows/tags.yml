@@ -29,7 +29,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for t in "$major" "$minor"; do
-            git tag -f "$t" "$tag"
+            # ^{commit}: без него git ставит подвижный тег на ОБЪЕКТ
+            # аннотированного тега, и v1 указывает на тег, который указывает на
+            # коммит. Резолвится это нормально, но в выводе API тип ссылки
+            # оказывается "tag" вместо "commit", и разбираться, почему у
+            # соседних тегов он разный, придётся ровно тогда, когда некогда.
+            git tag -f "$t" "$tag^{commit}"
             git push -f origin "$t"
             echo "  ok    $t -> $tag"
           done
