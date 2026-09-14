@@ -1,0 +1,35 @@
+# Передвигает git-теги v<major> и v<major>.<minor> на свежий релиз.
+#
+# Нужны они потому, что `uses: …@v1` — это ссылка на git-ref, а не на тег
+# образа. Теги образа v1 и v1.0 создаёт docker/metadata-action при сборке, и
+# на этом легко обмануться: образ по :v1 есть, а `uses: …@v1` не резолвится,
+# и прогон у вызывающего репозитория падает ДО создания job'ов, с
+# невразумительным «This run likely failed because of a workflow file issue».
+# Ровно так и случилось при первом подключении.
+name: tags
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: |
+          set -eu
+          tag=${GITHUB_REF_NAME}
+          major=${tag%%.*}                    # v1.2.3 -> v1
+          minor=${tag%.*}                     # v1.2.3 -> v1.2
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for t in "$major" "$minor"; do
+            git tag -f "$t" "$tag"
+            git push -f origin "$t"
+            echo "  ok    $t -> $tag"
+          done
