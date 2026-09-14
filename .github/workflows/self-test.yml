@@ -1,0 +1,116 @@
+# Самопроверка пайплайна на фикстуре. Смысл её в том, что «зелёный прогон» —
+# это утверждение, и оно тоже может сломаться: обновился сканер, сменился
+# формат его вывода, tool_norm стал возвращать пустой массив — и пайплайн
+# продолжает докладывать «находок нет» на файле, где их девять.
+#
+# Поэтому проверка обратная обычной: на fixtures/python-bad каждый инструмент
+# ОБЯЗАН что-то найти. Ноль находок здесь — это провал.
+#
+# Образ собирается здесь же, а не берётся опубликованный. Так проверяется то
+# дерево, которое в PR, включая правки Dockerfile и versions.env, — и нет
+# зависимости от того, успел ли собраться образ после предыдущего коммита.
+name: self-test
+
+on:
+  pull_request:
+  push: { branches: [main] }
+  schedule:
+    # Раз в неделю: сканеры обновляются сами (реестровые правила semgrep, база
+    # trivy), и сломаться пайплайн может без единого коммита в него.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: docker/setup-buildx-action@v3
+      - id: vers
+        run: grep -E '^[A-Z_]+=' versions.env >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Одна архитектура и load: образ нужен этому же раннеру, а не реестру.
+          platforms: linux/amd64
+          load: true
+          tags: sec-pipeline:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BANDIT_VERSION=${{ steps.vers.outputs.BANDIT_VERSION }}
+            SEMGREP_VERSION=${{ steps.vers.outputs.SEMGREP_VERSION }}
+            RUFF_VERSION=${{ steps.vers.outputs.RUFF_VERSION }}
+            PIP_AUDIT_VERSION=${{ steps.vers.outputs.PIP_AUDIT_VERSION }}
+            CHECKOV_VERSION=${{ steps.vers.outputs.CHECKOV_VERSION }}
+            TRIVY_VERSION=${{ steps.vers.outputs.TRIVY_VERSION }}
+            GITLEAKS_VERSION=${{ steps.vers.outputs.GITLEAKS_VERSION }}
+            HADOLINT_VERSION=${{ steps.vers.outputs.HADOLINT_VERSION }}
+
+      - name: Прогон по фикстуре
+        run: |
+          docker run --rm -v "$PWD/fixtures/python-bad:/src" -w /src \
+            sec-pipeline:test sh -c '
+              sh "$SEC_ROOT/ci/plan.sh"
+              rc=0
+              for t in bandit semgrep ruff pip-audit trivy-fs checkov hadolint sbom; do
+                sh "$SEC_ROOT/ci/run.sh" "$t" || rc=1
+              done
+              exit $rc'
+
+      - name: Каждый инструмент что-то нашёл
+        run: |
+          docker run --rm -v "$PWD/fixtures/python-bad:/src" -w /src \
+            sec-pipeline:test sh -c '
+              rc=0
+              for f in reports/*.norm.json; do
+                tool=$(basename "$f" .norm.json)
+                n=$(jq "length" "$f")
+                # sbom — инвентарь, а не находки: у него ноль по определению.
+                [ "$tool" = "sbom" ] && { echo "  --    sbom: инвентарь"; continue; }
+                if [ "$n" = "0" ]; then
+                  echo "  СБОЙ  $tool: ноль находок на фикстуре, где они есть"
+                  rc=1
+                else
+                  echo "  ok    $tool: $n"
+                fi
+              done
+              exit $rc'
+
+      - name: SARIF валиден
+        run: |
+          docker run --rm -v "$PWD/fixtures/python-bad:/src" -w /src \
+            sec-pipeline:test sh -c '
+              for f in reports/*.sarif; do
+                # ruleIndex по стандарту необязателен, если есть ruleId — semgrep
+                # его и не пишет. Проверяем то, на чём GitHub действительно
+                # спотыкается: версию, наличие ruleId и индекс, если он есть.
+                jq -e "(.runs[0].tool.driver.rules | length) as \$n
+                  | .version == \"2.1.0\"
+                  and ([.runs[0].results[] | select(.ruleId == null)] | length) == 0
+                  and ([.runs[0].results[] | select(.ruleIndex != null and .ruleIndex >= \$n)] | length) == 0" \
+                  "$f" >/dev/null || { echo "  СБОЙ  $f: невалидный SARIF"; exit 1; }
+                echo "  ok    $(basename "$f")"
+              done'
+
+      - name: Порог обязан сработать
+        run: |
+          # Проверка наоборот: успех gate.sh здесь означает, что порог
+          # промолчал на файле с hardcoded-паролем и shell=True.
+          if docker run --rm -v "$PWD/fixtures/python-bad:/src" -w /src \
+            sec-pipeline:test sh -c 'sh "$SEC_ROOT/ci/gate.sh"'; then
+            echo "  СБОЙ  порог не сработал на заведомо дырявой фикстуре"
+            exit 1
+          fi
+          echo "  ok    порог сработал"
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-reports
+          path: fixtures/python-bad/reports/
+          if-no-files-found: ignore

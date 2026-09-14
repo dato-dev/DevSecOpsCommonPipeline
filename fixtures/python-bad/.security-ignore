@@ -1,0 +1,3 @@
+# trivy находит их в базовом образе python:latest, чинить нечем
+trivy-fs: CVE-2023-45853
+ruff: *

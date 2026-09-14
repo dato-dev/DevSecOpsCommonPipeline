@@ -1,0 +1,29 @@
+# Реестр инструментов. Одна строка — всё, что пайплайн знает об инструменте.
+# Добавить сканер = строка здесь + файл ci/tools/<tool>.sh. Больше нигде.
+#
+# tool        имя; оно же имя скрипта в ci/tools/ и имя отчёта в reports/
+# category    sast | lint | secrets | deps | iac | container | dast
+#             Категория решает две вещи: включается ли инструмент через
+#             SEC_<CATEGORY>=1 и по какому порогу он валит сборку.
+# langs       any | python | go | ... — через запятую. Инструмент попадёт в план,
+#             только если язык обнаружен (detect.sh) или назван в SEC_LANGS.
+# needs       файл или каталог, без которого запуск бессмысленен; `-` если нет.
+#             Глоб раскрывается по репозиторию: нет Dockerfile — нет hadolint.
+# dd_scan_type  имя парсера DefectDojo; `-` — не заливать (нет парсера).
+#             Имена парсеров DD чувствительны к регистру и пробелам. Неизвестное
+#             имя = HTTP 400 на заливке, и dd-push.sh печатает его целиком.
+# sarif       native — инструмент сам умеет SARIF в том же прогоне;
+#             derive — SARIF строится из нормализованного отчёта (ci/norm2sarif.sh);
+#             none — SARIF не нужен (инвентарь, а не находки).
+#
+#tool	category	langs	needs	dd_scan_type	sarif
+bandit	sast	python	-	Bandit Scan	derive
+semgrep	sast	any	-	Semgrep JSON Report	native
+ruff	lint	python	-	-	derive
+pip-audit	deps	python	-	pip-audit Scan	derive
+trivy-fs	deps	any	-	Trivy Scan	derive
+gitleaks	secrets	any	.git	Gitleaks Scan	derive
+checkov	iac	any	-	Checkov Scan	derive
+hadolint	container	any	Dockerfile	Hadolint Dockerfile check	derive
+sbom	sbom	any	-	CycloneDX Scan	none
+zap-baseline	dast	any	-	ZAP Scan	derive

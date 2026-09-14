@@ -1,0 +1,62 @@
+# Сборка образа со сканерами. Тег образа = тег пайплайна: в образе лежат те же
+# скрипты, и разъехаться они не должны.
+name: image
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths: ["Dockerfile", "versions.env", "ci/**", "registry.tsv"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # Версии живут в versions.env, а не в этом файле: их же читает локальный
+      # запуск через uvx, и два списка версий разошлись бы в первый месяц.
+      - id: v
+        run: grep -E '^[A-Z_]+=' versions.env >> "$GITHUB_OUTPUT"
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Явным литералом: имя репозитория содержит заглавные буквы,
+          # а GHCR принимает только нижний регистр.
+          images: ghcr.io/dato-dev/devsecopscommonpipeline
+          # v1.4.2 даёт теги v1.4.2, v1.4 и v1 — подключённые репозитории живут
+          # на v1 и получают обновления сканеров, не меняя ни строки у себя.
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=semver,pattern=v{{major}}
+            type=ref,event=branch
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BANDIT_VERSION=${{ steps.v.outputs.BANDIT_VERSION }}
+            SEMGREP_VERSION=${{ steps.v.outputs.SEMGREP_VERSION }}
+            RUFF_VERSION=${{ steps.v.outputs.RUFF_VERSION }}
+            PIP_AUDIT_VERSION=${{ steps.v.outputs.PIP_AUDIT_VERSION }}
+            CHECKOV_VERSION=${{ steps.v.outputs.CHECKOV_VERSION }}
+            TRIVY_VERSION=${{ steps.v.outputs.TRIVY_VERSION }}
+            GITLEAKS_VERSION=${{ steps.v.outputs.GITLEAKS_VERSION }}
+            HADOLINT_VERSION=${{ steps.v.outputs.HADOLINT_VERSION }}

@@ -1,0 +1,198 @@
+# Общий пайплайн проверок. Подключается из любого репозитория одной строкой
+# uses: — см. examples/caller.yml.
+#
+# Всё, что он делает, делают скрипты из ci/. YAML здесь только раскладывает их
+# по job'ам и передаёт настройки. Так пайплайн отлаживается на ноутбуке
+# (sh ci/plan.sh, sh ci/run.sh bandit) вместо сорока коммитов «fix ci».
+name: security
+
+on:
+  workflow_call:
+    inputs:
+      # Каждый input — необязательный. Пустой означает «не переопределять»:
+      # значение возьмётся из переменной репозитория (Settings -> Variables),
+      # а если и её нет — из дефолта в ci/plan.sh. Порядок разрешения там же,
+      # в одном месте, а не размазан по условиям в YAML.
+      langs:            { type: string, default: "" }   # auto | "python go"
+      sast:             { type: string, default: "" }   # 1 | 0
+      lint:             { type: string, default: "" }
+      # secrets — зарезервированное слово в workflow_call, поэтому вход
+      # категории «поиск секретов» называется secrets_scan. Переменная
+      # репозитория при этом обычная: SEC_SECRETS.
+      secrets_scan:     { type: string, default: "" }
+      deps:             { type: string, default: "" }
+      iac:              { type: string, default: "" }
+      container:        { type: string, default: "" }
+      sbom:             { type: string, default: "" }
+      dast:             { type: string, default: "" }
+      sast_tools:       { type: string, default: "" }   # auto | "bandit semgrep"
+      lint_tools:       { type: string, default: "" }
+      deps_tools:       { type: string, default: "" }
+      skip_tools:       { type: string, default: "" }
+      fail_on:          { type: string, default: "" }   # critical|high|medium|low|none
+      lint_fail_on:     { type: string, default: "" }
+      dast_target:      { type: string, default: "" }
+      python_paths:     { type: string, default: "" }
+      dd:               { type: string, default: "" }   # заливать ли в DefectDojo
+      dd_url:           { type: string, default: "" }
+      runs_on:          { type: string, default: "ubuntu-latest" }
+      # Образ и ветка пайплайна должны совпадать: в образе лежат те же скрипты.
+      # Тег v1 двигается по мажорной версии, как принято у actions.
+      scanner_image:    { type: string, default: "ghcr.io/dato-dev/devsecopscommonpipeline:v1" }
+      # Ветка/тег пайплайна для DAST-job: там скрипты берутся checkout'ом,
+      # а не из образа. Должна совпадать с тегом scanner_image.
+      pipeline_ref:     { type: string, default: "v1" }
+    secrets:
+      DD_TOKEN: { required: false }
+
+# Права нужны вызывающему репозиторию — reusable workflow наследует их и сам
+# себе добавить не может. В examples/caller.yml они перечислены.
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ${{ inputs.runs_on }}
+    container: { image: "${{ inputs.scanner_image }}" }
+    outputs:
+      config: ${{ steps.plan.outputs.config }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix_dast: ${{ steps.plan.outputs.matrix_dast }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      # fetch-depth: 0 — не про удобство: gitleaks смотрит историю, а при
+      # обычном checkout она состоит из одного коммита, и он находит ровно
+      # ноль секретов на репозитории, где их несколько.
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: plan
+        env:
+          # Целиком, объектами: новая настройка не требует правки YAML ни здесь,
+          # ни в подключённых репозиториях — только ci/plan.sh.
+          SEC_VARS: ${{ toJSON(vars) }}
+          SEC_INPUTS: ${{ toJSON(inputs) }}
+        run: sh "$SEC_ROOT/ci/plan.sh" --github >> "$GITHUB_OUTPUT"
+
+  scan:
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
+    runs-on: ${{ inputs.runs_on }}
+    container: { image: "${{ inputs.scanner_image }}" }
+    strategy:
+      # fail-fast: false — иначе первый сработавший сканер отменяет остальные,
+      # и в отчёте оказывается одна находка из пяти. Падение сборки решается
+      # один раз в конце, в job report.
+      fail-fast: false
+      matrix: { include: "${{ fromJSON(needs.plan.outputs.matrix) }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # База уязвимостей trivy — около гигабайта, и без кэша она качается
+      # заново на каждом прогоне.
+      - if: startsWith(matrix.tool, 'trivy')
+        uses: actions/cache@v4
+        with:
+          path: /tmp/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+      - name: ${{ matrix.tool }}
+        env: { SEC_CONFIG: "${{ needs.plan.outputs.config }}" }
+        run: |
+          eval "$(printf '%s' "$SEC_CONFIG" | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
+          sh "$SEC_ROOT/ci/run.sh" "${{ matrix.tool }}"
+      # continue-on-error, потому что на приватном репозитории без GHAS этот
+      # шаг отвечает 403. Терять из-за этого весь прогон незачем: отчёты всё
+      # равно уедут в артефакты, в сводку и в DefectDojo.
+      - if: always() && hashFiles(format('reports/{0}.sarif', matrix.tool)) != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/${{ matrix.tool }}.sarif
+          # Без category загрузки инструментов затирают друг друга: GitHub
+          # считает их разными прогонами одного анализа.
+          category: ${{ matrix.tool }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ matrix.tool }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  dast:
+    needs: plan
+    if: needs.plan.outputs.matrix_dast != '[]'
+    # Без container: ZAP запускается docker'ом, и ему нужен доступ к демону
+    # раннера и сеть до проверяемого приложения.
+    runs-on: ${{ inputs.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix: { include: "${{ fromJSON(needs.plan.outputs.matrix_dast) }}" }
+    steps:
+      - uses: actions/checkout@v4
+      # Репозиторий пайплайна прописан явно, а не через github.repository_owner:
+      # в reusable workflow этот контекст указывает на ВЫЗЫВАЮЩИЙ репозиторий,
+      # и у стороннего пользователя checkout ушёл бы в его собственный аккаунт.
+      - uses: actions/checkout@v4
+        with:
+          repository: dato-dev/DevSecOpsCommonPipeline
+          ref: ${{ inputs.pipeline_ref }}
+          path: .pipeline
+      - name: ${{ matrix.tool }}
+        env:
+          SEC_ROOT: ${{ github.workspace }}/.pipeline
+          SEC_CONFIG: "${{ needs.plan.outputs.config }}"
+        run: |
+          eval "$(printf '%s' "$SEC_CONFIG" | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
+          sh "$SEC_ROOT/ci/run.sh" "${{ matrix.tool }}"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ matrix.tool }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  report:
+    needs: [plan, scan, dast]
+    # always(): job существует ради того, чтобы показать результат, в том числе
+    # когда часть сканеров упала. Без этого сбой одного инструмента прячет
+    # находки всех остальных.
+    if: always() && needs.plan.outputs.any == '1'
+    runs-on: ${{ inputs.runs_on }}
+    container: { image: "${{ inputs.scanner_image }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: security-reports-*
+          path: reports/
+          merge-multiple: true
+      - name: Сводка
+        run: |
+          sh "$SEC_ROOT/ci/summary.sh" > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Комментарий в PR
+        if: github.event_name == 'pull_request'
+        env: { GITHUB_TOKEN: "${{ github.token }}" }
+        run: |
+          eval "$(printf '%s' '${{ needs.plan.outputs.config }}' | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
+          [ "${SEC_PR_COMMENT:-1}" = "1" ] && sh "$SEC_ROOT/ci/pr-comment.sh" summary.md || true
+      - name: DefectDojo
+        # Заливаем и когда порог превышен, и когда нет: DefectDojo — это
+        # история находок, а не сигнал светофора. Пропустить заливку на красной
+        # сборке значит потерять именно тот прогон, который интересен.
+        env:
+          DD_URL: ${{ inputs.dd_url || vars.DD_URL }}
+          DD_TOKEN: ${{ secrets.DD_TOKEN }}
+        run: |
+          eval "$(printf '%s' '${{ needs.plan.outputs.config }}' | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
+          if [ "${SEC_DD:-0}" != "1" ]; then echo "  --    DefectDojo выключен (SEC_DD=0)"; exit 0; fi
+          if [ -z "${DD_TOKEN:-}" ]; then echo "  СБОЙ  SEC_DD=1, но secrets.DD_TOKEN не передан"; exit 1; fi
+          sh "$SEC_ROOT/ci/dd-push.sh"
+      - name: Порог
+        run: |
+          eval "$(printf '%s' '${{ needs.plan.outputs.config }}' | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
+          sh "$SEC_ROOT/ci/gate.sh"

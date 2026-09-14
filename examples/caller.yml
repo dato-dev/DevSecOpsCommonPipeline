@@ -1,0 +1,23 @@
+# Положить в подключаемый репозиторий как .github/workflows/security.yml.
+# Это весь код, который нужен на стороне проекта.
+name: security
+
+on:
+  pull_request:
+  push: { branches: [main] }
+  schedule:
+    # Прогон по расписанию нужен не для порядка: уязвимость в зависимости
+    # появляется без единого коммита в проект, и без него репозиторий, где
+    # месяц не было изменений, месяц считается проверенным.
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+  security-events: write   # SARIF в Code Scanning
+  pull-requests: write     # комментарий со сводкой
+
+jobs:
+  security:
+    uses: dato-dev/DevSecOpsCommonPipeline/.github/workflows/security.yml@v1
+    secrets:
+      DD_TOKEN: ${{ secrets.DD_TOKEN }}

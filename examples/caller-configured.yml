@@ -1,0 +1,45 @@
+# Тот же вызов, но с настройками прямо в YAML — когда они должны быть видны
+# в самом репозитории, а не в Settings.
+#
+# Всё, что здесь перечислено, можно вместо этого задать переменными репозитория
+# (Settings -> Secrets and variables -> Actions -> Variables) под теми же
+# именами с префиксом SEC_: SEC_SAST_TOOLS, SEC_FAIL_ON и так далее. Тогда
+# набор проверок меняется без коммита — это удобно, когда пайплайн подключён
+# к тридцати репозиториям и нужно что-то быстро приглушить.
+name: security
+
+on:
+  pull_request:
+  push: { branches: [main] }
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  security:
+    uses: dato-dev/DevSecOpsCommonPipeline/.github/workflows/security.yml@v1
+    with:
+      langs: python
+      sast_tools: "bandit semgrep"
+      python_paths: "app src"
+      fail_on: high          # medium и ниже не валят сборку
+      lint_fail_on: none
+      skip_tools: "checkov"  # terraform в этом репозитории нет
+      dd: "1"
+    secrets:
+      DD_TOKEN: ${{ secrets.DD_TOKEN }}
+
+  # DAST отдельным вызовом: ему нужно поднятое приложение, а поднимает его
+  # каждый проект по-своему. Общий пайплайн не должен угадывать, как именно.
+  dast:
+    needs: security
+    uses: dato-dev/DevSecOpsCommonPipeline/.github/workflows/security.yml@v1
+    with:
+      dast: "1"
+      dast_target: "http://localhost:8000"
+      sast: "0"
+      lint: "0"
+      deps: "0"
+      secrets_scan: "0"
