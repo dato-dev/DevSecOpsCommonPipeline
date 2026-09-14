@@ -35,6 +35,7 @@ OUT_NORM="$SEC_REPORT_DIR/$tool.norm.json"
 OUT_SARIF="$SEC_REPORT_DIR/$tool.sarif"
 OUT_LOG="$SEC_REPORT_DIR/$tool.log"
 ARGS=$(tool_args "$tool")
+TOOL_NOTE=""
 export OUT_JSON OUT_NORM OUT_SARIF OUT_LOG ARGS
 rm -f "$OUT_JSON" "$OUT_NORM" "$OUT_SARIF"
 
@@ -91,5 +92,8 @@ fi
 counts=$(jq -r '
 	group_by(.severity) | map("\(.[0].severity): \(length)") | join(", ")
 	| if . == "" then "чисто" else . end' "$OUT_NORM")
-say "$tool — ${took}с — $counts"
+# TOOL_NOTE инструмент может выставить в tool_run: «в каком режиме отработал»,
+# «почему нашлось ноль». Пишется в ту же строку, потому что сам лог инструмента
+# виден только при сбое, а знать это полезно и при успехе.
+say "$tool — ${took}с — $counts${TOOL_NOTE:+ — $TOOL_NOTE}"
 rm -f "$OUT_LOG" "$OUT_LOG.norm"

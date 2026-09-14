@@ -47,6 +47,7 @@ jobs:
             RUFF_VERSION=${{ steps.vers.outputs.RUFF_VERSION }}
             PIP_AUDIT_VERSION=${{ steps.vers.outputs.PIP_AUDIT_VERSION }}
             CHECKOV_VERSION=${{ steps.vers.outputs.CHECKOV_VERSION }}
+            OSV_SCANNER_VERSION=${{ steps.vers.outputs.OSV_SCANNER_VERSION }}
             TRIVY_VERSION=${{ steps.vers.outputs.TRIVY_VERSION }}
             GITLEAKS_VERSION=${{ steps.vers.outputs.GITLEAKS_VERSION }}
             HADOLINT_VERSION=${{ steps.vers.outputs.HADOLINT_VERSION }}
@@ -57,7 +58,7 @@ jobs:
             sec-pipeline:test sh -c '
               sh "$SEC_ROOT/ci/plan.sh"
               rc=0
-              for t in bandit semgrep ruff pip-audit trivy-fs checkov hadolint sbom; do
+              for t in bandit semgrep ruff osv-scanner trivy-fs checkov hadolint sbom; do
                 sh "$SEC_ROOT/ci/run.sh" "$t" || rc=1
               done
               exit $rc'

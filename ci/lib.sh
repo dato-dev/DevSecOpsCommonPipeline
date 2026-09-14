@@ -24,19 +24,20 @@ die()  { bad "$1"; exit 1; }
 # 3 langs, 4 needs, 5 dd_scan_type, 6 sarif.
 reg() { # инструмент номер-колонки
 	awk -F'\t' -v t="$1" -v c="$2" '
-		/^#/ || NF < 6 { next }
+		/^#/ || NF < 7 { next }
 		$1 == t { print $c; found = 1; exit }
 		END { if (!found) exit 1 }
 	' "$REGISTRY"
 }
 
-reg_tools() { awk -F'\t' '!/^#/ && NF >= 6 { print $1 }' "$REGISTRY"; }
+reg_tools() { awk -F'\t' '!/^#/ && NF >= 7 { print $1 }' "$REGISTRY"; }
 
 reg_category()  { reg "$1" 2; }
 reg_langs()     { reg "$1" 3; }
 reg_needs()     { reg "$1" 4; }
 reg_dd_type()   { reg "$1" 5; }
 reg_sarif()     { reg "$1" 6; }
+reg_default()   { reg "$1" 7; }
 
 # ----------------------------------------------------------------- severity
 

@@ -112,6 +112,11 @@ for tool in $(reg_tools); do
 		skip_reason "$tool" "не назван в SEC_${upper}_TOOLS"
 		continue
 	fi
+	# Инструмент вне набора по умолчанию берётся, только если назван явно.
+	if [ "$pick" = "auto" ] && [ "$(reg_default "$tool")" = "0" ]; then
+		skip_reason "$tool" "вне набора по умолчанию — назовите в SEC_${upper}_TOOLS"
+		continue
+	fi
 	if ! lang_match "$(reg_langs "$tool")"; then
 		skip_reason "$tool" "нет языка $(reg_langs "$tool") (есть: $langs)"
 		continue

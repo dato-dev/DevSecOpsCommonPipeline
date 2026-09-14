@@ -57,6 +57,7 @@ jobs:
             RUFF_VERSION=${{ steps.v.outputs.RUFF_VERSION }}
             PIP_AUDIT_VERSION=${{ steps.v.outputs.PIP_AUDIT_VERSION }}
             CHECKOV_VERSION=${{ steps.v.outputs.CHECKOV_VERSION }}
+            OSV_SCANNER_VERSION=${{ steps.v.outputs.OSV_SCANNER_VERSION }}
             TRIVY_VERSION=${{ steps.v.outputs.TRIVY_VERSION }}
             GITLEAKS_VERSION=${{ steps.v.outputs.GITLEAKS_VERSION }}
             HADOLINT_VERSION=${{ steps.v.outputs.HADOLINT_VERSION }}

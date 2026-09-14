@@ -13,6 +13,7 @@ ARG SEMGREP_VERSION
 ARG RUFF_VERSION
 ARG PIP_AUDIT_VERSION
 ARG CHECKOV_VERSION
+ARG OSV_SCANNER_VERSION
 ARG TRIVY_VERSION
 ARG GITLEAKS_VERSION
 ARG HADOLINT_VERSION
@@ -50,7 +51,9 @@ RUN set -eu; \
 		| tar -xz -C /usr/local/bin gitleaks; \
 	curl -fsSL -o /usr/local/bin/hadolint \
 		"https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-${HL_A}"; \
-	chmod +x /usr/local/bin/hadolint
+	curl -fsSL -o /usr/local/bin/osv-scanner \
+		"https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_${TARGETARCH}"; \
+	chmod +x /usr/local/bin/hadolint /usr/local/bin/osv-scanner
 
 # Базу уязвимостей trivy в образ не кладём: это ещё под гигабайт, и она
 # устаревает быстрее, чем пересобирается образ. Trivy скачивает её сам, а в
@@ -69,4 +72,5 @@ WORKDIR /src
 
 RUN bandit --version && semgrep --version && ruff --version \
 	&& pip-audit --version && checkov --version >/dev/null \
-	&& trivy --version && gitleaks version && hadolint --version
+	&& trivy --version && gitleaks version && hadolint --version \
+	&& osv-scanner --version

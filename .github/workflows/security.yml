@@ -49,6 +49,13 @@ on:
 # себе добавить не может. В examples/caller.yml они перечислены.
 permissions:
   contents: read
+  # actions: read нужен download-artifact в job report. Без него он падает на
+  # ListArtifacts с «(403) Forbidden» — и это не очевидно: артефакты свои
+  # собственные, из этого же прогона. Причина в том, что явный блок permissions
+  # заменяет набор по умолчанию целиком, а не дополняет его, и actions:read из
+  # токена пропадает. У ВЫЗЫВАЮЩЕГО workflow он тоже должен быть: права
+  # вызванного не могут превышать права вызывающего.
+  actions: read
   security-events: write
   pull-requests: write
 

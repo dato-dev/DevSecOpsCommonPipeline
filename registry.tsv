@@ -15,15 +15,19 @@
 # sarif       native — инструмент сам умеет SARIF в том же прогоне;
 #             derive — SARIF строится из нормализованного отчёта (ci/norm2sarif.sh);
 #             none — SARIF не нужен (инвентарь, а не находки).
+# default     1 — входит в набор по умолчанию; 0 — только если назван явно в
+#             SEC_<CATEGORY>_TOOLS. Ноль стоит у инструментов, которые на части
+#             репозиториев ломаются по причинам, не связанным с находками.
 #
-#tool	category	langs	needs	dd_scan_type	sarif
-bandit	sast	python	-	Bandit Scan	derive
-semgrep	sast	any	-	Semgrep JSON Report	native
-ruff	lint	python	-	-	derive
-pip-audit	deps	python	-	pip-audit Scan	derive
-trivy-fs	deps	any	-	Trivy Scan	derive
-gitleaks	secrets	any	.git	Gitleaks Scan	derive
-checkov	iac	any	-	Checkov Scan	derive
-hadolint	container	any	Dockerfile	Hadolint Dockerfile check	derive
-sbom	sbom	any	-	CycloneDX Scan	none
-zap-baseline	dast	any	-	ZAP Scan	derive
+#tool	category	langs	needs	dd_scan_type	sarif	default
+bandit	sast	python	-	Bandit Scan	derive	1
+semgrep	sast	any	-	Semgrep JSON Report	native	1
+ruff	lint	python	-	-	derive	1
+osv-scanner	deps	any	-	-	derive	1
+pip-audit	deps	python	-	pip-audit Scan	derive	0
+trivy-fs	deps	any	-	Trivy Scan	derive	1
+gitleaks	secrets	any	.git	Gitleaks Scan	derive	1
+checkov	iac	any	-	Checkov Scan	derive	1
+hadolint	container	any	Dockerfile	Hadolint Dockerfile check	derive	1
+sbom	sbom	any	-	CycloneDX Scan	none	1
+zap-baseline	dast	any	-	ZAP Scan	derive	1

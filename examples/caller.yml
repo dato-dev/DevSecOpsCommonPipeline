@@ -13,11 +13,16 @@ on:
 
 permissions:
   contents: read
+  actions: read            # сборка артефактов прогона в job report
   security-events: write   # SARIF в Code Scanning
   pull-requests: write     # комментарий со сводкой
 
 jobs:
   security:
     uses: dato-dev/DevSecOpsCommonPipeline/.github/workflows/security.yml@v1
+    with:
+      # Раннер — тоже переменная репозитория: на своём раннере поставьте
+      # SEC_RUNS_ON=self-hosted. Нужен docker — job'ы идут в container:.
+      runs_on: ${{ vars.SEC_RUNS_ON || 'ubuntu-latest' }}
     secrets:
       DD_TOKEN: ${{ secrets.DD_TOKEN }}
