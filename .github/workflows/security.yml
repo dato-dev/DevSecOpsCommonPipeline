@@ -74,7 +74,7 @@ jobs:
       # fetch-depth: 0 — не про удобство: gitleaks смотрит историю, а при
       # обычном checkout она состоит из одного коммита, и он находит ровно
       # ноль секретов на репозитории, где их несколько.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - id: plan
         env:
@@ -96,12 +96,12 @@ jobs:
       fail-fast: false
       matrix: { include: "${{ fromJSON(needs.plan.outputs.matrix) }}" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       # База уязвимостей trivy — около гигабайта, и без кэша она качается
       # заново на каждом прогоне.
       - if: startsWith(matrix.tool, 'trivy')
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/trivy
           key: trivy-db-${{ github.run_id }}
@@ -116,14 +116,14 @@ jobs:
       # равно уедут в артефакты, в сводку и в DefectDojo.
       - if: always() && hashFiles(format('reports/{0}.sarif', matrix.tool)) != ''
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/${{ matrix.tool }}.sarif
           # Без category загрузки инструментов затирают друг друга: GitHub
           # считает их разными прогонами одного анализа.
           category: ${{ matrix.tool }}
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-reports-${{ matrix.tool }}
           path: reports/
@@ -140,11 +140,11 @@ jobs:
       fail-fast: false
       matrix: { include: "${{ fromJSON(needs.plan.outputs.matrix_dast) }}" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Репозиторий пайплайна прописан явно, а не через github.repository_owner:
       # в reusable workflow этот контекст указывает на ВЫЗЫВАЮЩИЙ репозиторий,
       # и у стороннего пользователя checkout ушёл бы в его собственный аккаунт.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: dato-dev/DevSecOpsCommonPipeline
           ref: ${{ inputs.pipeline_ref }}
@@ -157,7 +157,7 @@ jobs:
           eval "$(printf '%s' "$SEC_CONFIG" | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
           sh "$SEC_ROOT/ci/run.sh" "${{ matrix.tool }}"
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-reports-${{ matrix.tool }}
           path: reports/
@@ -173,8 +173,8 @@ jobs:
     runs-on: ${{ inputs.runs_on }}
     container: { image: "${{ inputs.scanner_image }}" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: security-reports-*
           path: reports/

@@ -26,13 +26,13 @@ jobs:
   fixture:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - id: vers
         run: grep -E '^[A-Z_]+=' versions.env >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           # Одна архитектура и load: образ нужен этому же раннеру, а не реестру.
@@ -134,7 +134,7 @@ jobs:
           echo "  ok    порог сработал"
 
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fixture-reports
           path: fixtures/python-bad/reports/
