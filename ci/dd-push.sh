@@ -72,7 +72,6 @@ elif [ "$DD_INSECURE" = "1" ]; then
 	# размен, снаружи — нет. Правильнее положить свой CA в DD_CA_CERT.
 	tls="-k"
 fi
-insecure=$tls
 
 echo "DefectDojo: ${DD_URL:-<не задан>}  продукт: $DD_PRODUCT"
 
@@ -84,7 +83,8 @@ command -v curl >/dev/null 2>&1 || { bad "curl не найден в PATH"; fail=
 # Токен проверяем ДО заливок: узнавать про 401 после десяти неудачных POST —
 # значит десять раз прочитать в логе непонятную ошибку вместо одной понятной.
 probe_err=$(mktemp) || exit 1
-probe=$(curl -sS $insecure -o /dev/null -w '%{http_code}' \
+# shellcheck disable=SC2086  # $tls — это «--cacert <файл>» или «-k»; слова нужны
+probe=$(curl -sS $tls -o /dev/null -w '%{http_code}' \
 	-H "Authorization: Token $DD_TOKEN" \
 	"$DD_URL/api/v2/product_types/?limit=1" 2>"$probe_err")
 case "$probe" in
@@ -140,7 +140,8 @@ push() { # файл scan_type engagement
 	[ -n "$commit" ] && set -- "$@" -F "commit_hash=$commit"
 	[ -n "$branch" ] && set -- "$@" -F "branch_tag=$branch"
 
-	out=$(curl -sS $insecure -X POST "$DD_URL/api/v2/reimport-scan/" \
+	# shellcheck disable=SC2086  # см. выше
+	out=$(curl -sS $tls -X POST "$DD_URL/api/v2/reimport-scan/" \
 		-H "Authorization: Token $DD_TOKEN" \
 		-w '\n%{http_code}' "$@" 2>&1)
 	code=$(printf '%s' "$out" | tail -n 1)

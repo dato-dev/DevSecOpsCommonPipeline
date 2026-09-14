@@ -26,3 +26,6 @@ jobs:
       runs_on: ${{ vars.SEC_RUNS_ON || 'ubuntu-latest' }}
     secrets:
       DD_TOKEN: ${{ secrets.DD_TOKEN }}
+      # Секреты в reusable workflow не наследуются — каждый пробрасывается явно.
+      # PEM корневого сертификата, если DefectDojo за самоподписанным.
+      DD_CA_CERT: ${{ secrets.DD_CA_CERT }}
