@@ -44,6 +44,8 @@ on:
       pipeline_ref:     { type: string, default: "v1" }
     secrets:
       DD_TOKEN: { required: false }
+      # PEM корневого сертификата, если DefectDojo за самоподписанным.
+      DD_CA_CERT: { required: false }
 
 # Права нужны вызывающему репозиторию — reusable workflow наследует их и сам
 # себе добавить не может. В examples/caller.yml они перечислены.
@@ -192,14 +194,27 @@ jobs:
         # история находок, а не сигнал светофора. Пропустить заливку на красной
         # сборке значит потерять именно тот прогон, который интересен.
         env:
+          # Переменные репозитория с префиксом DD_ уезжают целиком: DD_URL,
+          # DD_INSECURE, DD_PRODUCT, DD_MIN_SEVERITY, DD_ENGAGEMENT_SAST и
+          # любые другие, которые понимает ci/dd-push.sh. Новая ручка не
+          # требует правки этого файла — как и у SEC_*.
+          DD_VARS: ${{ toJSON(vars) }}
           DD_URL: ${{ inputs.dd_url || vars.DD_URL }}
           DD_TOKEN: ${{ secrets.DD_TOKEN }}
+          DD_CA_CERT: ${{ secrets.DD_CA_CERT }}
         run: |
           eval "$(printf '%s' '${{ needs.plan.outputs.config }}' | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
+          eval "$(printf '%s' "$DD_VARS" | jq -r 'to_entries[] | select(.key | startswith("DD_")) | "export " + .key + "=" + (.value | tostring | @sh)')"
           if [ "${SEC_DD:-0}" != "1" ]; then echo "  --    DefectDojo выключен (SEC_DD=0)"; exit 0; fi
           if [ -z "${DD_TOKEN:-}" ]; then echo "  СБОЙ  SEC_DD=1, но secrets.DD_TOKEN не передан"; exit 1; fi
           sh "$SEC_ROOT/ci/dd-push.sh"
       - name: Порог
+        # always(): вердикт пайплайна — это то, ради чего всё запускалось, и он
+        # не должен пропадать из-за недоступного внешнего сервиса. Недоступный
+        # DefectDojo уже прятал результат порога один раз: шаг выше упал на
+        # самоподписанном сертификате, и «есть ли в коде critical» осталось
+        # неизвестным.
+        if: always()
         run: |
           eval "$(printf '%s' '${{ needs.plan.outputs.config }}' | jq -r 'to_entries[] | "export " + .key + "=" + (.value | @sh)')"
           sh "$SEC_ROOT/ci/gate.sh"

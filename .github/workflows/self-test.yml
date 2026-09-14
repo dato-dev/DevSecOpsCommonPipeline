@@ -52,13 +52,37 @@ jobs:
             GITLEAKS_VERSION=${{ steps.vers.outputs.GITLEAKS_VERSION }}
             HADOLINT_VERSION=${{ steps.vers.outputs.HADOLINT_VERSION }}
 
+      # Секрет в историю фикстуры сеется здесь, а не лежит в репозитории.
+      # Две причины. Первая: пайплайн однажды будут сканировать им же самим, и
+      # настоящий по форме ключ в его истории стал бы вечной находкой в
+      # собственном отчёте. Вторая: ключ генерируется случайным, потому что
+      # gitleaks игнорирует значения со стоп-словами — TEST, FAKE, EXAMPLE,
+      # SAMPLE. Засеянный «AKIAZZ4TESTFAKE00001» он молча пропустил, и на
+      # настоящем подключении это выглядело как «секретов нет».
+      - name: Секрет в историю фикстуры
+        run: |
+          d=fixtures/python-bad
+          rm -rf "$d/.git"
+          git -C "$d" init -q
+          git -C "$d" config user.email selftest@example.invalid
+          git -C "$d" config user.name selftest
+          # tr вместо base32: последнего нет в BSD-окружении, а скрипт полезно
+          # уметь прогнать и на макбуке.
+          key="AKIA$(LC_ALL=C tr -dc 'A-Z2-7' </dev/urandom | head -c 16)"
+          printf 'AWS_ACCESS_KEY_ID=%s\n' "$key" > "$d/leaked.env"
+          git -C "$d" add -A
+          git -C "$d" commit -q -m "секрет, который сейчас удалят"
+          git -C "$d" rm -q leaked.env
+          git -C "$d" commit -q -m "удалил секрет из рабочего дерева"
+          echo "  ok    история из $(git -C "$d" rev-list --count HEAD) коммитов, ключ только в ней"
+
       - name: Прогон по фикстуре
         run: |
           docker run --rm -v "$PWD/fixtures/python-bad:/src" -w /src \
             sec-pipeline:test sh -c '
               sh "$SEC_ROOT/ci/plan.sh"
               rc=0
-              for t in bandit semgrep ruff osv-scanner trivy-fs checkov hadolint sbom; do
+              for t in bandit semgrep ruff osv-scanner trivy-fs gitleaks checkov hadolint sbom; do
                 sh "$SEC_ROOT/ci/run.sh" "$t" || rc=1
               done
               exit $rc'
